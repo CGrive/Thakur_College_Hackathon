@@ -50,20 +50,15 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 # -------------------- MODELS --------------------
 
-class Student(Base):
-    __tablename__ = "students"
+class Faculty(Base):
+    __tablename__ = "faculty"
 
     id = Column(Integer, primary_key=True, index=True)
+    faculty_id = Column(String, unique=True, index=True)
     full_name = Column(String)
-    student_id = Column(String, unique=True, index=True)
     department = Column(String)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
-
-    face_encoding = Column(String, nullable=True)
-    id_card_hash = Column(String, nullable=True)
-    fingerprint_data = Column(String, nullable=True)
-
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -72,7 +67,7 @@ class Lecture(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String)
-    course_code = Column(String)
+    subject_name = Column(String)
     room = Column(String)
     start_time = Column(DateTime)
     end_time = Column(DateTime)
@@ -86,9 +81,21 @@ class Attendance(Base):
     student_id = Column(Integer, ForeignKey("students.id"))
     lecture_id = Column(Integer, ForeignKey("lectures.id"))
     timestamp = Column(DateTime, default=datetime.utcnow)
-    verification_method = Column(String)
+    is_verified = Column(Boolean)
     confidence_score = Column(Float, default=0.0)
     status = Column(String, default="verified")
+
+
+class Students(Base):
+    __tablename__ = "students"
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, unique=True, index=True)
+    full_name = Column(String)
+    face_encoding = Column(String, nullable=True)
+    qr_encoding = Column(String, nullable=True)
+    id_card_hash = Column(String, nullable=True)
+    fingerprint_data = Column(String, nullable=True)
 
 
 Base.metadata.create_all(bind=engine)
@@ -96,9 +103,9 @@ Base.metadata.create_all(bind=engine)
 
 # -------------------- SCHEMAS --------------------
 
-class StudentCreate(BaseModel):
+class FacultyCreate(BaseModel):
     full_name: str
-    student_id: str
+    faculty_id: str
     department: str
     email: EmailStr
     password: str
@@ -110,13 +117,18 @@ class LoginRequest(BaseModel):
 
 
 class AttendanceRequest(BaseModel):
-    student_id: str
+    student_id: int
     lecture_id: int
-    verification_method: str
-    verification_data: str
+    is_verified: Boolean
+    confidence_score: Float
+    status: str
 
 
+class AddStudent(BaseModel):
+    student_id: str
+    full_name: str
 # -------------------- DEPENDENCY --------------------
+
 
 def get_db():
     db = SessionLocal()
@@ -154,28 +166,47 @@ async def log_requests(request: Request, call_next):
 
 # -------------------- ENDPOINTS --------------------
 
-@app.post("/register")
-def register_student(student: StudentCreate, db: Session = Depends(get_db)):
-
-    exists = db.query(Student).filter(
-        (Student.email == student.email) |
-        (Student.student_id == student.student_id)
+@app.post("/add_student")
+def add_student(student: AddStudent, db: Session = Depends(get_db)):
+    exists = db.query(Students).filter(
+        (Students.full_name == Students.full_name) |
+        (Students.student_id == Students.student_id)
     ).first()
 
     if exists:
         raise HTTPException(400, "Student already exists")
 
-    new_student = Student(
+    new_student = Students(
         full_name=student.full_name,
         student_id=student.student_id,
-        department=student.department,
-        email=student.email,
-        hashed_password=hash_password(student.password)
     )
-
     db.add(new_student)
     db.commit()
     db.refresh(new_student)
+
+
+@app.post("/register")
+def register_faculty(faculty: FacultyCreate, db: Session = Depends(get_db)):
+
+    exists = db.query(Faculty).filter(
+        (Faculty.email == faculty.email) |
+        (Faculty.faculty_id == faculty.faculty_id)
+    ).first()
+
+    if exists:
+        raise HTTPException(400, "Faculty already exists")
+
+    new_faculty = Faculty(
+        full_name=faculty.full_name,
+        faculty_id=faculty.faculty_id,
+        department=faculty.department,
+        email=faculty.email,
+        hashed_password=hash_password(faculty.password)
+    )
+
+    db.add(new_faculty)
+    db.commit()
+    db.refresh(new_faculty)
 
     return {"message": "Student registered successfully"}
 
@@ -183,28 +214,28 @@ def register_student(student: StudentCreate, db: Session = Depends(get_db)):
 @app.post("/login")
 def login(data: LoginRequest, db: Session = Depends(get_db)):
 
-    student = db.query(Student).filter(Student.email == data.email).first()
+    faculty = db.query(Faculty).filter(Faculty.email == data.email).first()
 
-    if not student:
+    if not faculty:
         raise HTTPException(401, "Invalid credentials")
 
-    if not verify_password(data.password, student.hashed_password):
+    if not verify_password(data.password, faculty.hashed_password):
         raise HTTPException(401, "Invalid credentials")
 
-    token = create_access_token({"sub": student.email})
+    token = create_access_token({"sub": faculty.email})
 
     return {
         "access_token": token,
         "token_type": "bearer",
-        "student_id": student.student_id
+        "faculty_id": faculty.faculty_id
     }
 
 
 @app.post("/enroll-face/{student_id}")
 def enroll_face(student_id: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
 
-    student = db.query(Student).filter(
-        Student.student_id == student_id).first()
+    student = db.query(Students).filter(
+        Students.student_id == student_id).first()
 
     if not student:
         raise HTTPException(404, "Student not found")
@@ -218,18 +249,23 @@ def enroll_face(student_id: str, file: UploadFile = File(...), db: Session = Dep
 @app.post("/mark-attendance")
 def mark_attendance(req: AttendanceRequest, db: Session = Depends(get_db)):
 
-    student = db.query(Student).filter(
-        Student.student_id == req.student_id).first()
+    student = db.query(Students).filter(
+        Students.student_id == req.student_id).first()
+    lecture = db.query(Lecture).filter(
+        Lecture.id == req.lecture_id
+    ).first()
 
     if not student:
         raise HTTPException(404, "Student not found")
+    if not lecture:
+        raise HTTPException(404, "lecture not found")
 
     attendance = Attendance(
-        student_id=student.id,
+        student_id=req.student_id,
         lecture_id=req.lecture_id,
-        verification_method=req.verification_method,
-        confidence_score=0.95,
-        status="verified"
+        is_verified=req.is_verified,
+        confidence_score=req.confidence_score,
+        status=req.status
     )
 
     db.add(attendance)
@@ -244,16 +280,24 @@ def mark_attendance(req: AttendanceRequest, db: Session = Depends(get_db)):
 @app.get("/dashboard")
 def dashboard(db: Session = Depends(get_db)):
 
-    students = db.query(Student).count()
+    students = db.query(Students).count()
+    faculty = db.query(Faculty).count()
     attendance = db.query(Attendance).count()
 
     return {
+        "total_faculty": faculty,
         "total_students": students,
         "total_attendance": attendance
     }
 
 
+@app.get("/")
+def root():
+    return {
+        "Status": "Working.."
+    }
 # -------------------- RUN --------------------
+
 
 if __name__ == "__main__":
     import uvicorn
