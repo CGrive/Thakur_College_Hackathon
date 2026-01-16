@@ -66,7 +66,6 @@ class Lecture(Base):
     __tablename__ = "lectures"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String)
     subject_name = Column(String)
     room = Column(String)
     start_time = Column(DateTime)
@@ -119,14 +118,22 @@ class LoginRequest(BaseModel):
 class AttendanceRequest(BaseModel):
     student_id: int
     lecture_id: int
-    is_verified: Boolean
-    confidence_score: Float
+    is_verified: bool
+    confidence_score: float
     status: str
 
 
 class AddStudent(BaseModel):
-    student_id: str
+    student_id: int
     full_name: str
+
+
+class AddLecture(BaseModel):
+    subject_name: str
+    room: str
+    start_time: datetime
+    end_time: datetime
+    is_active: bool
 # -------------------- DEPENDENCY --------------------
 
 
@@ -166,11 +173,11 @@ async def log_requests(request: Request, call_next):
 
 # -------------------- ENDPOINTS --------------------
 
-@app.post("/add_student")
+@app.post("/add-student")
 def add_student(student: AddStudent, db: Session = Depends(get_db)):
     exists = db.query(Students).filter(
-        (Students.full_name == Students.full_name) |
-        (Students.student_id == Students.student_id)
+        (Students.full_name == student.full_name) |
+        (Students.student_id == student.student_id)
     ).first()
 
     if exists:
@@ -183,6 +190,27 @@ def add_student(student: AddStudent, db: Session = Depends(get_db)):
     db.add(new_student)
     db.commit()
     db.refresh(new_student)
+
+
+@app.post("/add-lecture")
+def add_lecture(lecture: AddLecture, db: Session = Depends(get_db)):
+    exists = db.query(Lecture).filter(
+        Lecture.subject_name == lecture.subject_name).first()
+    if exists:
+        raise HTTPException(400, "Lecture already exists")
+
+    new_lecture = Lecture(
+        subject_name=lecture.subject_name,
+        room=lecture.room,
+        start_time=lecture.start_time,
+        end_time=lecture.end_time,
+        is_active=lecture.is_active
+    )
+    db.add(new_lecture)
+    db.commit()
+    db.refresh(new_lecture)
+
+    return {"message": "lecture added successfully"}
 
 
 @app.post("/register")
@@ -252,13 +280,12 @@ def mark_attendance(req: AttendanceRequest, db: Session = Depends(get_db)):
     student = db.query(Students).filter(
         Students.student_id == req.student_id).first()
     lecture = db.query(Lecture).filter(
-        Lecture.id == req.lecture_id
-    ).first()
+        Lecture.id == req.lecture_id).first()
 
     if not student:
         raise HTTPException(404, "Student not found")
     if not lecture:
-        raise HTTPException(404, "lecture not found")
+        raise HTTPException(404, "Lecture not found")
 
     attendance = Attendance(
         student_id=req.student_id,
