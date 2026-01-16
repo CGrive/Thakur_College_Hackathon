@@ -1,5 +1,5 @@
 // src/components/StudentRegistrationPage.jsx
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   Box,
   Paper,
@@ -28,17 +28,16 @@ import {
   DialogActions,
   Chip,
   Snackbar,
+  Backdrop,
 } from "@mui/material";
 import {
   CameraAlt,
-  Fingerprint,
-  Badge,
   Security,
   CheckCircle,
   ArrowBack,
   ArrowForward,
   Close,
-  PersonAdd,
+  Error,
 } from "@mui/icons-material";
 import { studentAPI } from "../api/astitvaAPI";
 
@@ -59,25 +58,13 @@ const StudentRegistrationPage = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [registrationComplete, setRegistrationComplete] = useState(false);
   const [registrationResult, setRegistrationResult] = useState(null);
+  const [showCameraDialog, setShowCameraDialog] = useState(false);
+  const [capturing, setCapturing] = useState(false);
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: "",
     severity: "info",
   });
-
-  // Load existing students on mount
-  useEffect(() => {
-    checkExistingStudents();
-  }, []);
-
-  const checkExistingStudents = async () => {
-    try {
-      const students = await studentAPI.getAllStudents();
-      console.log("Existing students:", students);
-    } catch (error) {
-      console.error("Error loading students:", error);
-    }
-  };
 
   const handleInputChange = (field) => (event) => {
     setFormData({ ...formData, [field]: event.target.value });
@@ -100,13 +87,15 @@ const StudentRegistrationPage = () => {
   };
 
   const completeRegistration = async () => {
-    if (capturedFaces.length === 0) {
-      showSnackbar("Please capture at least one face image", "warning");
+    if (!agreeToTerms) {
+      showSnackbar("Please agree to the privacy terms", "warning");
       return;
     }
 
-    if (!agreeToTerms) {
-      showSnackbar("Please agree to the privacy terms", "warning");
+    // Validate student ID is a number
+    const studentIdNum = parseInt(formData.studentId, 10);
+    if (isNaN(studentIdNum)) {
+      showSnackbar("Student ID must be a number", "error");
       return;
     }
 
@@ -117,11 +106,13 @@ const StudentRegistrationPage = () => {
       const studentData = {
         studentId: formData.studentId,
         fullName: formData.fullName,
-        department: formData.department,
-        email: formData.email,
-        phone: formData.phone,
-        year: formData.year,
+        department: formData.department || null,
+        email: formData.email || null,
+        phone: formData.phone || null,
+        year: formData.year || null,
       };
+
+      console.log("Sending registration data:", studentData);
 
       // Call API to register student
       const result = await studentAPI.registerStudentComplete(
@@ -141,288 +132,47 @@ const StudentRegistrationPage = () => {
 
     } catch (error) {
       console.error("Registration error:", error);
-      showSnackbar(`Registration failed: ${error.message || error}`, "error");
+      showSnackbar(`Registration failed: ${error.message}`, "error");
     } finally {
       setIsProcessing(false);
     }
   };
 
-  // Mock face capture component (simplified for demo)
-  const FaceCaptureSection = () => {
-    const [showCameraDialog, setShowCameraDialog] = useState(false);
-    const [capturing, setCapturing] = useState(false);
+  // Simplified face capture - just a button that adds mock faces
+  const captureFace = () => {
+    if (capturedFaces.length >= 3) {
+      showSnackbar("Maximum 3 face captures allowed", "warning");
+      return;
+    }
 
-    const captureFace = () => {
-      if (capturedFaces.length >= 5) {
-        showSnackbar("Maximum 5 face captures allowed", "warning");
-        return;
+    setCapturing(true);
+
+    setTimeout(() => {
+      const newFace = {
+        id: Date.now(),
+        image: `mock-image-${capturedFaces.length + 1}`,
+        timestamp: new Date().toLocaleTimeString(),
+      };
+
+      setCapturedFaces((prev) => [...prev, newFace]);
+      setCapturing(false);
+      
+      if (capturedFaces.length >= 2) {
+        setShowCameraDialog(false);
       }
 
-      setCapturing(true);
+      showSnackbar(`Face captured! (${capturedFaces.length + 1}/3)`, "success");
+    }, 1000);
+  };
 
-      // Simulate face capture
-      setTimeout(() => {
-        const newFace = {
-          id: Date.now(),
-          image: `data:image/jpeg;base64,${btoa(`mock-image-${Date.now()}`)}`,
-          timestamp: new Date().toLocaleTimeString(),
-        };
+  const removeFace = (id) => {
+    setCapturedFaces((prev) => prev.filter((face) => face.id !== id));
+    showSnackbar("Face removed", "info");
+  };
 
-        setCapturedFaces((prev) => [...prev, newFace]);
-        setCapturing(false);
-
-        showSnackbar(`Face captured! (${capturedFaces.length + 1}/5)`, "success");
-
-        // Auto-close camera after 3 captures
-        if (capturedFaces.length >= 2) {
-          setTimeout(() => {
-            setShowCameraDialog(false);
-          }, 1000);
-        }
-      }, 1500);
-    };
-
-    const removeFace = (id) => {
-      setCapturedFaces((prev) => prev.filter((face) => face.id !== id));
-      showSnackbar("Face removed", "info");
-    };
-
-    const resetFaces = () => {
-      setCapturedFaces([]);
-      showSnackbar("All faces cleared", "info");
-    };
-
-    return (
-      <Box>
-        <Typography variant="h5" fontWeight={600} mb={3} color="#1a237e">
-          Face Registration
-        </Typography>
-        <Typography variant="body1" color="text.secondary" mb={4}>
-          Capture multiple angles of your face for better recognition accuracy.
-        </Typography>
-
-        {/* Capture Cards */}
-        <Grid container spacing={3} mb={4}>
-          {[1, 2, 3].map((num) => (
-            <Grid item xs={12} sm={6} md={4} key={num}>
-              <Card
-                sx={{
-                  height: "100%",
-                  textAlign: "center",
-                  border:
-                    capturedFaces.length >= num
-                      ? "2px solid #4caf50"
-                      : "2px solid #e0e0e0",
-                  transition: "all 0.3s",
-                }}
-              >
-                <CardContent>
-                  <Avatar
-                    sx={{
-                      width: 80,
-                      height: 80,
-                      bgcolor:
-                        capturedFaces.length >= num ? "#4caf50" : "#1a237e",
-                      margin: "auto",
-                      mb: 2,
-                    }}
-                  >
-                    {capturedFaces.length >= num ? (
-                      <CheckCircle sx={{ fontSize: 40 }} />
-                    ) : (
-                      <CameraAlt sx={{ fontSize: 40 }} />
-                    )}
-                  </Avatar>
-                  <Typography variant="h6" gutterBottom>
-                    {num === 1
-                      ? "Front View"
-                      : num === 2
-                      ? "Left Profile"
-                      : "Right Profile"}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" mb={2}>
-                    {capturedFaces.length >= num
-                      ? "Captured successfully"
-                      : "Look straight at camera"}
-                  </Typography>
-
-                  {capturedFaces.length >= num ? (
-                    <Chip label="Captured" color="success" size="small" />
-                  ) : (
-                    <Button
-                      variant="contained"
-                      onClick={() => setShowCameraDialog(true)}
-                      startIcon={<CameraAlt />}
-                      disabled={capturing}
-                    >
-                      {capturing ? "Capturing..." : "Capture"}
-                    </Button>
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-
-        {/* Captured Faces Preview */}
-        {capturedFaces.length > 0 && (
-          <Box sx={{ mb: 4 }}>
-            <Box
-              sx={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                mb: 2,
-              }}
-            >
-              <Typography variant="h6">
-                Captured Faces ({capturedFaces.length}/5)
-              </Typography>
-              <Button
-                variant="outlined"
-                size="small"
-                onClick={resetFaces}
-                startIcon={<Close />}
-              >
-                Clear All
-              </Button>
-            </Box>
-
-            <Grid container spacing={2}>
-              {capturedFaces.map((face, index) => (
-                <Grid item xs={4} sm={3} md={2.4} key={face.id}>
-                  <Box sx={{ position: "relative" }}>
-                    <Box
-                      sx={{
-                        width: "100%",
-                        height: 120,
-                        bgcolor: "#4CAF50",
-                        borderRadius: 2,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        color: "white",
-                        fontSize: 14,
-                      }}
-                    >
-                      Face {index + 1}
-                    </Box>
-                    <Chip
-                      label={`#${index + 1}`}
-                      size="small"
-                      sx={{
-                        position: "absolute",
-                        top: 4,
-                        left: 4,
-                        bgcolor: "#4CAF50",
-                        color: "white",
-                      }}
-                    />
-                    <IconButton
-                      size="small"
-                      onClick={() => removeFace(face.id)}
-                      sx={{
-                        position: "absolute",
-                        top: 4,
-                        right: 4,
-                        bgcolor: "rgba(0,0,0,0.5)",
-                        color: "white",
-                        "&:hover": { bgcolor: "rgba(0,0,0,0.7)" },
-                      }}
-                    >
-                      <Close fontSize="small" />
-                    </IconButton>
-                  </Box>
-                </Grid>
-              ))}
-            </Grid>
-
-            <Alert severity="success" sx={{ mt: 2 }}>
-              <CheckCircle sx={{ mr: 1, verticalAlign: "middle" }} />
-              {capturedFaces.length} face images captured. More images improve
-              accuracy.
-            </Alert>
-          </Box>
-        )}
-
-        {/* Camera Dialog */}
-        <Dialog
-          open={showCameraDialog}
-          onClose={() => setShowCameraDialog(false)}
-          maxWidth="sm"
-          fullWidth
-        >
-          <DialogTitle>
-            <Box
-              sx={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <Typography variant="h6">Capture Your Face</Typography>
-              <IconButton onClick={() => setShowCameraDialog(false)}>
-                <Close />
-              </IconButton>
-            </Box>
-          </DialogTitle>
-
-          <DialogContent>
-            <Box sx={{ textAlign: "center", py: 4 }}>
-              <Box
-                sx={{
-                  position: "relative",
-                  height: 300,
-                  mb: 3,
-                  bgcolor: "#000",
-                  borderRadius: 2,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "white",
-                }}
-              >
-                <Typography>Camera Feed Here</Typography>
-
-                {capturing && (
-                  <Box
-                    sx={{
-                      position: "absolute",
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      bgcolor: "rgba(0,0,0,0.7)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexDirection: "column",
-                    }}
-                  >
-                    <CircularProgress sx={{ color: "#4CAF50", mb: 2 }} />
-                    <Typography sx={{ color: "white" }}>Processing...</Typography>
-                  </Box>
-                )}
-              </Box>
-
-              <Button
-                variant="contained"
-                onClick={captureFace}
-                disabled={capturing}
-                startIcon={<CameraAlt />}
-                sx={{
-                  background: "linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%)",
-                  py: 1.5,
-                  width: "100%",
-                }}
-              >
-                {capturing ? "Capturing..." : "Capture Face"}
-              </Button>
-            </Box>
-          </DialogContent>
-        </Dialog>
-      </Box>
-    );
+  const resetFaces = () => {
+    setCapturedFaces([]);
+    showSnackbar("All faces cleared", "info");
   };
 
   return (
@@ -473,13 +223,13 @@ const StudentRegistrationPage = () => {
                   <strong>Student ID:</strong> {formData.studentId}
                 </Typography>
                 <Typography variant="body2">
-                  <strong>Department:</strong> {formData.department}
+                  <strong>Department:</strong> {formData.department || "Not specified"}
                 </Typography>
                 <Typography variant="body2">
                   <strong>Face Images:</strong> {capturedFaces.length}
                 </Typography>
                 <Typography variant="body2">
-                  <strong>Status:</strong> Registered
+                  <strong>Status:</strong> Registered in database
                 </Typography>
               </Box>
 
@@ -546,25 +296,30 @@ const StudentRegistrationPage = () => {
                 <Grid item xs={12} md={6}>
                   <TextField
                     fullWidth
-                    label="Full Name"
+                    label="Full Name *"
                     value={formData.fullName}
                     onChange={handleInputChange("fullName")}
                     placeholder="e.g. John Doe"
                     required
+                    error={!formData.fullName && activeStep === 0}
+                    helperText={!formData.fullName && activeStep === 0 ? "Required field" : ""}
                   />
                 </Grid>
                 <Grid item xs={12} md={6}>
                   <TextField
                     fullWidth
-                    label="Student ID"
+                    label="Student ID *"
                     value={formData.studentId}
                     onChange={handleInputChange("studentId")}
-                    placeholder="e.g. 20245501"
+                    placeholder="e.g. 2024001"
                     required
+                    type="number"
+                    error={!formData.studentId && activeStep === 0}
+                    helperText={!formData.studentId && activeStep === 0 ? "Required field (numbers only)" : ""}
                   />
                 </Grid>
                 <Grid item xs={12} md={6}>
-                  <FormControl fullWidth required>
+                  <FormControl fullWidth>
                     <InputLabel>Department</InputLabel>
                     <Select
                       value={formData.department}
@@ -625,7 +380,158 @@ const StudentRegistrationPage = () => {
           )}
 
           {/* Step 2: Face Registration */}
-          {activeStep === 1 && <FaceCaptureSection />}
+          {activeStep === 1 && (
+            <Box>
+              <Typography variant="h5" fontWeight={600} mb={3} color="#1a237e">
+                Face Registration
+              </Typography>
+              <Typography variant="body1" color="text.secondary" mb={4}>
+                Capture multiple angles of your face for better recognition accuracy.
+              </Typography>
+
+              {/* Capture Cards */}
+              <Grid container spacing={3} mb={4}>
+                {[1, 2, 3].map((num) => (
+                  <Grid item xs={12} sm={6} md={4} key={num}>
+                    <Card
+                      sx={{
+                        height: "100%",
+                        textAlign: "center",
+                        border:
+                          capturedFaces.length >= num
+                            ? "2px solid #4caf50"
+                            : "2px solid #e0e0e0",
+                        transition: "all 0.3s",
+                      }}
+                    >
+                      <CardContent>
+                        <Avatar
+                          sx={{
+                            width: 80,
+                            height: 80,
+                            bgcolor:
+                              capturedFaces.length >= num ? "#4caf50" : "#1a237e",
+                            margin: "auto",
+                            mb: 2,
+                          }}
+                        >
+                          {capturedFaces.length >= num ? (
+                            <CheckCircle sx={{ fontSize: 40 }} />
+                          ) : (
+                            <CameraAlt sx={{ fontSize: 40 }} />
+                          )}
+                        </Avatar>
+                        <Typography variant="h6" gutterBottom>
+                          {num === 1
+                            ? "Front View"
+                            : num === 2
+                            ? "Left Profile"
+                            : "Right Profile"}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" mb={2}>
+                          {capturedFaces.length >= num
+                            ? "Captured successfully"
+                            : "Look straight at camera"}
+                        </Typography>
+
+                        {capturedFaces.length >= num ? (
+                          <Chip label="Captured" color="success" size="small" />
+                        ) : (
+                          <Button
+                            variant="contained"
+                            onClick={() => setShowCameraDialog(true)}
+                            startIcon={<CameraAlt />}
+                            disabled={capturing}
+                          >
+                            {capturing ? "Capturing..." : "Capture"}
+                          </Button>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
+
+              {/* Captured Faces Preview */}
+              {capturedFaces.length > 0 && (
+                <Box sx={{ mb: 4 }}>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      mb: 2,
+                    }}
+                  >
+                    <Typography variant="h6">
+                      Captured Faces ({capturedFaces.length}/3)
+                    </Typography>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={resetFaces}
+                      startIcon={<Close />}
+                    >
+                      Clear All
+                    </Button>
+                  </Box>
+
+                  <Grid container spacing={2}>
+                    {capturedFaces.map((face, index) => (
+                      <Grid item xs={4} sm={3} md={2.4} key={face.id}>
+                        <Box sx={{ position: "relative" }}>
+                          <Avatar
+                            sx={{
+                              width: 80,
+                              height: 80,
+                              bgcolor: "#4CAF50",
+                              color: "white",
+                              fontSize: 24,
+                              margin: "auto",
+                            }}
+                          >
+                            #{index + 1}
+                          </Avatar>
+                          <Chip
+                            label={`#${index + 1}`}
+                            size="small"
+                            sx={{
+                              position: "absolute",
+                              top: -8,
+                              left: -8,
+                              bgcolor: "#4CAF50",
+                              color: "white",
+                            }}
+                          />
+                          <IconButton
+                            size="small"
+                            onClick={() => removeFace(face.id)}
+                            sx={{
+                              position: "absolute",
+                              top: -8,
+                              right: -8,
+                              bgcolor: "rgba(244, 67, 54, 0.9)",
+                              color: "white",
+                              width: 24,
+                              height: 24,
+                              "&:hover": { bgcolor: "#f44336" },
+                            }}
+                          >
+                            <Close fontSize="small" />
+                          </IconButton>
+                        </Box>
+                      </Grid>
+                    ))}
+                  </Grid>
+
+                  <Alert severity="success" sx={{ mt: 2 }}>
+                    <CheckCircle sx={{ mr: 1, verticalAlign: "middle" }} />
+                    {capturedFaces.length} face images captured. More images improve accuracy.
+                  </Alert>
+                </Box>
+              )}
+            </Box>
+          )}
 
           {/* Step 3: Privacy Consent */}
           {activeStep === 2 && (
@@ -647,33 +553,28 @@ const StudentRegistrationPage = () => {
                   Data Protection Agreement
                 </Typography>
                 <Typography variant="body2" paragraph>
-                  By proceeding, you consent to the following terms regarding
-                  the student's personal and biometric data:
+                  By proceeding, you consent to the following terms regarding the student's personal and biometric data:
                 </Typography>
 
                 <Box component="ul" sx={{ pl: 2, mb: 3 }}>
                   <li>
                     <Typography variant="body2">
-                      <strong>Encrypted Storage:</strong> All biometric data is
-                      encrypted using military-grade AES-256 encryption.
+                      <strong>Encrypted Storage:</strong> All biometric data is encrypted using military-grade AES-256 encryption.
                     </Typography>
                   </li>
                   <li>
                     <Typography variant="body2">
-                      <strong>Limited Use:</strong> Information will only be
-                      used for automated attendance verification.
+                      <strong>Limited Use:</strong> Information will only be used for automated attendance verification.
                     </Typography>
                   </li>
                   <li>
                     <Typography variant="body2">
-                      <strong>FERPA Compliance:</strong> All data handling
-                      complies with FERPA regulations.
+                      <strong>FERPA Compliance:</strong> All data handling complies with FERPA regulations.
                     </Typography>
                   </li>
                   <li>
                     <Typography variant="body2">
-                      <strong>Data Retention:</strong> Biometric data is
-                      retained only for the duration of enrollment.
+                      <strong>Data Retention:</strong> Biometric data is retained only for the duration of enrollment.
                     </Typography>
                   </li>
                 </Box>
@@ -710,9 +611,7 @@ const StudentRegistrationPage = () => {
                 }
                 label={
                   <Typography>
-                    I agree to the encrypted storage of biometric data. The
-                    information will only be used for automated attendance
-                    verification and is protected according to FERPA guidelines.
+                    I agree to the encrypted storage of biometric data. The information will only be used for automated attendance verification and is protected according to FERPA guidelines.
                   </Typography>
                 }
                 sx={{ mb: 3 }}
@@ -749,8 +648,6 @@ const StudentRegistrationPage = () => {
               disabled={
                 (activeStep === 0 &&
                   (!formData.fullName || !formData.studentId)) ||
-                (activeStep === 1 && capturedFaces.length === 0) ||
-                (activeStep === 2 && !agreeToTerms) ||
                 isProcessing
               }
               sx={{
@@ -772,10 +669,97 @@ const StudentRegistrationPage = () => {
       <Box sx={{ mt: 4, textAlign: "center" }}>
         <Typography variant="caption" color="text.secondary">
           <Security sx={{ fontSize: 14, verticalAlign: "middle", mr: 0.5 }} />
-          All data is protected with end-to-end encryption • ISO 27001 Certified
-          • GDPR Compliant
+          All data is protected with end-to-end encryption • ISO 27001 Certified • GDPR Compliant
         </Typography>
       </Box>
+
+      {/* Camera Dialog */}
+      <Dialog
+        open={showCameraDialog}
+        onClose={() => setShowCameraDialog(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <Typography variant="h6">Capture Your Face</Typography>
+            <IconButton onClick={() => setShowCameraDialog(false)}>
+              <Close />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+
+        <DialogContent>
+          <Box sx={{ textAlign: "center", py: 4 }}>
+            <Box
+              sx={{
+                position: "relative",
+                height: 300,
+                mb: 3,
+                bgcolor: "#000",
+                borderRadius: 2,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "white",
+              }}
+            >
+              <Typography>Click "Capture Face" to simulate face capture</Typography>
+
+              {capturing && (
+                <Box
+                  sx={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    bgcolor: "rgba(0,0,0,0.7)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexDirection: "column",
+                  }}
+                >
+                  <CircularProgress sx={{ color: "#4CAF50", mb: 2 }} />
+                  <Typography sx={{ color: "white" }}>Processing...</Typography>
+                </Box>
+              )}
+            </Box>
+
+            <Button
+              variant="contained"
+              onClick={captureFace}
+              disabled={capturing}
+              startIcon={<CameraAlt />}
+              sx={{
+                background: "linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%)",
+                py: 1.5,
+                width: "100%",
+              }}
+            >
+              {capturing ? "Capturing..." : "Capture Face"}
+            </Button>
+          </Box>
+        </DialogContent>
+      </Dialog>
+
+      {/* Backdrop for processing */}
+      <Backdrop
+        sx={{ color: '#fff', zIndex: (theme) => theme.zIndex.drawer + 1 }}
+        open={isProcessing}
+      >
+        <Box sx={{ textAlign: 'center' }}>
+          <CircularProgress color="inherit" sx={{ mb: 2 }} />
+          <Typography>Registering student to database...</Typography>
+        </Box>
+      </Backdrop>
 
       {/* Snackbar */}
       <Snackbar
@@ -783,6 +767,7 @@ const StudentRegistrationPage = () => {
         autoHideDuration={6000}
         onClose={() => setSnackbar({ ...snackbar, open: false })}
         message={snackbar.message}
+        severity={snackbar.severity}
       />
     </Box>
   );

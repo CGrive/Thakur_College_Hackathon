@@ -1,18 +1,18 @@
-from fastapi import FastAPI, HTTPException, Depends, status, UploadFile, File, Form, Request
+from verify import verify
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Request
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.middleware.cors import CORSMiddleware
-
+from camera_service import start_camera, stop_camera
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, ForeignKey, Float
-from sqlalchemy.orm import declarative_base, sessionmaker, Session, relationship
+from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
 from datetime import datetime, timedelta
-from typing import Optional
 from pydantic import BaseModel, EmailStr
 
+from typing import Optional
 import bcrypt
-from jose import JWTError, jwt
+from jose import jwt
 import uuid
-
 # pip install fastapi uvicorn sqlalchemy bcrypt python-jose python-multipart email-validator
 
 # -------------------- APP INIT --------------------
@@ -128,6 +128,14 @@ class AddStudent(BaseModel):
     full_name: str
 
 
+class UpdateStudent(BaseModel):
+    full_name: Optional[str] = None
+    face_encoding: Optional[str] = None
+    qr_encoding: Optional[str] = None
+    id_card_hash: Optional[str] = None
+    fingerprint_data: Optional[str] = None
+
+
 class AddLecture(BaseModel):
     subject_name: str
     room: str
@@ -173,6 +181,18 @@ async def log_requests(request: Request, call_next):
 
 # -------------------- ENDPOINTS --------------------
 
+@app.post("/camera/start")
+def start():
+    start_camera()
+    return {"status": "camera started"}
+
+
+@app.post("/camera/stop")
+def stop():
+    stop_camera()
+    return {"status": "camera stopped"}
+
+
 @app.post("/add-student")
 def add_student(student: AddStudent, db: Session = Depends(get_db)):
     exists = db.query(Students).filter(
@@ -190,6 +210,34 @@ def add_student(student: AddStudent, db: Session = Depends(get_db)):
     db.add(new_student)
     db.commit()
     db.refresh(new_student)
+
+
+@app.patch("/students/{student_id}")
+def update_student(
+    student_id: int,
+    data: UpdateStudent,
+    db: Session = Depends(get_db)
+):
+    student = db.query(Students).filter(
+        Students.student_id == student_id
+    ).first()
+
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    update_data = data.dict(exclude_unset=True)
+
+    for key, value in update_data.items():
+        setattr(student, key, value)
+
+    db.commit()
+    db.refresh(student)
+
+    return {
+        "message": "Student updated successfully",
+        "student_id": student.student_id,
+        "updated_fields": list(update_data.keys())
+    }
 
 
 @app.post("/add-lecture")
@@ -211,6 +259,29 @@ def add_lecture(lecture: AddLecture, db: Session = Depends(get_db)):
     db.refresh(new_lecture)
 
     return {"message": "lecture added successfully"}
+
+
+@app.post("/verify-fingerprint")
+def verify_fingerprint(student_id: int, query_path: str, db: Session = Depends(get_db)):
+
+    student = db.query(Students).filter(
+        Students.student_id == student_id
+    ).first()
+
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    enrolled_path = student.fingerprint_data
+
+    is_verified: bool = verify(enrolled_path, query_path)
+    if is_verified:
+        return {
+            "200": "Attendance is valid"
+        }
+    else:
+        return {
+            "200": "Attendance is not valid"
+        }
 
 
 @app.post("/register")
@@ -257,21 +328,6 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
         "token_type": "bearer",
         "faculty_id": faculty.faculty_id
     }
-
-
-@app.post("/enroll-face/{student_id}")
-def enroll_face(student_id: str, file: UploadFile = File(...), db: Session = Depends(get_db)):
-
-    student = db.query(Students).filter(
-        Students.student_id == student_id).first()
-
-    if not student:
-        raise HTTPException(404, "Student not found")
-
-    student.face_encoding = f"encoded-{uuid.uuid4()}"
-    db.commit()
-
-    return {"message": "Face enrolled successfully"}
 
 
 @app.post("/mark-attendance")
