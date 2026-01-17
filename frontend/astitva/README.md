@@ -1,16 +1,69 @@
-# React + Vite
+# 🌟 Astitwa – Smart Attendance System
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Astitwa is an **intelligent, secure, and automated attendance management system** designed to replace traditional manual attendance methods with a **technology-driven solution**.  
+It integrates **biometric data, camera input, ML models and backend APIs** to ensure accurate, reliable, and tamper-proof attendance tracking.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## 🚀 Features
 
-## React Compiler
+- 🧑‍🎓 **Student Management**
+  - Add, update, and manage student records
+  - Store biometric / fingerprint data securely
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- 📸 **Camera-Based Attendance**
+  - Real-time camera feed for attendance capture
+  - Automated attendance marking
+  - Preventing proxy attendance
 
-## Expanding the ESLint configuration
+- 🔐 **Secure Authentication**
+  - REST API-based access control
+  - Token-based authentication using JWT and bcrypt
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- 🗄️ **Database Integration**
+  - Structured relational database using SQLAlchemy
+  - Efficient querying and updates
+
+- ⚡ **FastAPI Backend**
+  - High-performance asynchronous APIs
+  - Clean and modular project structure
+
+- 🌐 **CORS Enabled**
+  - Seamless integration with frontend applications
+
+---
+
+## 🛠️ Tech Stack
+
+| Layer          | Technology |
+|----------------|------------|
+| Backend        | FastAPI    |
+| Database       | SQLite     |
+| ORM            | SQLAlchemy |
+| Authentication | bcrypt, JWT|
+| Camera & Vision| OpenCV     |
+| Language       | Python     |
+| Server         | Uvicorn    |
+| Package Manager| yarn, uv   |
+---
+
+## 📂 Project Structure
+
+```text
+Astitwa/
+│
+├── backend/
+│   ├── main.py
+│   ├── database.py
+│   ├── models.py
+│   ├── schemas.py
+│   ├── camera_worker.py
+│   └── routers/
+│
+├── frontend/
+│   └── public
+│   └── src
+|   └── (frontend code)
+│
+├── requirements.txt
+└── README.md
